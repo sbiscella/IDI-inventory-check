@@ -99,6 +99,8 @@ input[type="file"].file-input{display:none;}
 .counter-btn.plus{background:#6a8bb0;color:#fff;border-radius:0 0 14px 0;}
 .toast{position:fixed;bottom:420px;left:50%;transform:translateX(-50%);background:#0d2340;color:#fff;border-radius:20px;padding:9px 20px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;z-index:100;}
 </style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
 <div id="toast" class="toast"></div>
@@ -132,11 +134,7 @@ input[type="file"].file-input{display:none;}
   </div>
 </div>
 
-<!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
-window.addEventListener('load', function() {
 // Init Firebase
 firebase.initializeApp({
   apiKey:"AIzaSyDOgxXK-bLNc7NHYHaAzooTjrj8WfDuY2o",
@@ -484,7 +482,6 @@ function renderMissingTags(){
   });
   el.innerHTML=h;
 }
-}); // end window.onload
 </script>
 </body>
 </html>
