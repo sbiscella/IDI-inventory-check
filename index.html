@@ -174,6 +174,22 @@ db.ref('missingTags').on('value',function(snap){
   missingTags=snap.val()||{};
   renderMissingTags();
 });
+// Lot listeners for all tabs
+['raw','rip','moulded','glue'].forEach(function(cat){
+  db.ref('lots/'+cat).on('value',function(snap){
+    var data=snap.val();
+    if(data&&data.items){
+      localState[cat].lots=data.items;
+    } else {
+      localState[cat].lots=[];
+    }
+    renderLots(cat);
+  });
+  db.ref('counters/'+cat).on('value',function(snap){
+    localState[cat].counter=snap.val()||0;
+    if(currentTab===cat)updateCounterDisplay();
+  });
+});
 
 // Counter
 function updateCounterDisplay(){
@@ -183,11 +199,11 @@ function updateCounterDisplay(){
 }
 function changeCounter(delta){
   var s=localState[currentTab];if(!s)return;
-  var v=s.counter+delta;if(v<0)v=0;s.counter=v;
+  var v=s.counter+delta;if(v<0)v=0;
   var el=$('counter-num');
   el.style.transform=delta>0?'scale(1.25)':'scale(0.85)';
   setTimeout(function(){el.style.transform='scale(1)';},120);
-  updateCounterDisplay();
+  db.ref('counters/'+currentTab).set(v);
 }
 function handleReset(){
   if(!localState[currentTab]||localState[currentTab].counter===0)return;
@@ -198,7 +214,8 @@ function handleReset(){
   }else{
     clearTimeout(resetTimer);resetPending=false;
     var btn=$('resetBtn');btn.textContent='Reset';btn.style.color='';
-    localState[currentTab].counter=0;updateCounterDisplay();showToast('Counter reset!');
+    db.ref('counters/'+currentTab).set(0);
+    showToast('Counter reset!');
   }
 }
 
@@ -388,8 +405,11 @@ function processFile(file,cat){
     var lots=parseCSV(e.target.result);
     if(!lots.length){alert('No lot numbers found. Make sure your CSV has a "Lot Number" column.');return;}
     lots.sort(function(a,b){var na=parseFloat(a),nb=parseFloat(b);return(!isNaN(na)&&!isNaN(nb))?na-nb:a.localeCompare(b);});
-    localState[cat].lots=lots.map(function(num){return{num:String(num).trim(),checked:false};});
-    renderLots(cat);showToast(lots.length+' lot numbers loaded!');
+    var items=lots.map(function(num){return{num:String(num).trim(),checked:false};});
+    setSync('','Saving...');
+    db.ref('lots/'+cat).set({items:items}).then(function(){
+      showToast(lots.length+' lot numbers loaded!');
+    }).catch(function(){alert('Failed to save lots. Check Firebase rules.');setSync('err','⚠ Error');});
   };
   reader.readAsText(file);
 }
@@ -397,15 +417,27 @@ function parseCSV(text){
   var lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
   if(!lines.length)return[];
   var headers=lines[0].split(',').map(function(h){return h.replace(/"/g,'').trim().toLowerCase();});
-  var colIdx=headers.findIndex(function(h){return h==='lot number'||h==='lot no'||h==='lot#'||h==='lot';});
+  var colIdx=-1;
+  for(var h=0;h<headers.length;h++){if(headers[h]==='lot number'||headers[h]==='lot no'||headers[h]==='lot#'||headers[h]==='lot'){colIdx=h;break;}}
   if(colIdx===-1)colIdx=0;
   var lots=[];
   for(var i=1;i<lines.length;i++){var cols=lines[i].split(',');if(cols.length>colIdx){var val=cols[colIdx].replace(/"/g,'').trim();if(val)lots.push(val);}}
   return lots;
 }
-function toggleLot(cat,idx){localState[cat].lots[idx].checked=!localState[cat].lots[idx].checked;renderLots(cat);}
-function clearLots(cat){if(!confirm('Clear all lot numbers?'))return;localState[cat].lots=[];localState[cat].lotSearch='';renderLots(cat);}
-function uncheckAll(cat){localState[cat].lots.forEach(function(l){l.checked=false;});renderLots(cat);}
+function toggleLot(cat,idx){
+  var lots=localState[cat].lots;
+  if(!lots[idx])return;
+  lots[idx].checked=!lots[idx].checked;
+  db.ref('lots/'+cat).set({items:lots});
+}
+function clearLots(cat){
+  if(!confirm('Clear all lot numbers?'))return;
+  db.ref('lots/'+cat).remove().then(function(){localState[cat].lotSearch='';renderLots(cat);});
+}
+function uncheckAll(cat){
+  var lots=localState[cat].lots.map(function(l){return{num:l.num,checked:false};});
+  db.ref('lots/'+cat).set({items:lots});
+}
 function lotSearch(cat,val){localState[cat].lotSearch=val;renderLots(cat);}
 function renderLots(cat){
   var el=$('lot-content-'+cat);if(!el)return;
