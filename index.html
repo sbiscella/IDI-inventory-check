@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="IDI Inventory">
 <title>IDI Inventory Check</title>
@@ -74,7 +74,8 @@ input[type="file"].file-input{display:none;}
 .lot-check svg{display:none;}.lot-item.checked .lot-check svg{display:block;}
 .lot-num{font-size:14px;font-weight:500;color:#0d2340;font-family:monospace;}
 .lot-extra{font-size:11px;color:#6a8bb0;margin-left:auto;}
-.search-box{width:100%;font-size:15px;padding:10px 12px;border:1px solid rgba(13,35,64,0.2);border-radius:9px;background:#fff;color:#0d2340;outline:none;-webkit-appearance:none;margin-bottom:8px;}
+.search-box{width:100%;font-size:16px;padding:10px 12px;border:1px solid rgba(13,35,64,0.2);border-radius:9px;background:#fff;color:#0d2340;outline:none;-webkit-appearance:none;margin-bottom:8px;}
+.counter-btn{touch-action:manipulation;}
 .empty{text-align:center;color:#6a8bb0;font-size:13px;padding:1.5rem 0;}
 .mt-item{background:#fff;border:1px solid rgba(13,35,64,0.1);border-radius:12px;padding:12px;margin-bottom:8px;}
 .mt-item.found{background:#eaf5ee;border-color:rgba(45,122,79,0.2);}
@@ -93,8 +94,9 @@ input[type="file"].file-input{display:none;}
 .counter-sub{font-size:9px;color:rgba(255,255,255,0.35);margin-top:2px;text-align:center;max-width:68px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .counter-reset{width:100%;padding:5px 0;font-size:10px;font-weight:600;letter-spacing:.05em;background:rgba(106,139,176,0.2);color:rgba(255,255,255,0.4);border:none;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;text-transform:uppercase;}
 .counter-btns{display:flex;width:100%;}
-.counter-btn{flex:1;padding:10px 0;font-size:20px;font-weight:700;border:none;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;-webkit-tap-highlight-color:transparent;}
+.counter-btn{flex:1;padding:10px 0;font-size:20px;font-weight:700;border:none;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
 .counter-btn:active{opacity:0.7;}
+button{touch-action:manipulation;}
 .counter-btn.minus{background:#1e3a5f;color:#fff;border-radius:0 0 0 14px;}
 .counter-btn.plus{background:#6a8bb0;color:#fff;border-radius:0 0 14px 0;}
 .toast{position:fixed;bottom:420px;left:50%;transform:translateX(-50%);background:#0d2340;color:#fff;border-radius:20px;padding:9px 20px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;z-index:100;}
@@ -438,12 +440,15 @@ function uncheckAll(cat){
   var lots=localState[cat].lots.map(function(l){return{num:l.num,checked:false};});
   db.ref('lots/'+cat).set({items:lots});
 }
-function lotSearch(cat,val){localState[cat].lotSearch=val;renderLots(cat);}
-function renderLots(cat){
-  var el=$('lot-content-'+cat);if(!el)return;
-  var s=localState[cat];if(!s.lots.length){el.innerHTML='';return;}
+function lotSearch(cat,val){
+  localState[cat].lotSearch=val;
+  // Only re-render the list items, not the search box itself
+  renderLotItems(cat);
+  renderLotStats(cat);
+}
+function getFilteredLots(cat){
+  var s=localState[cat];
   var search=(s.lotSearch||'').toLowerCase();
-  var total=s.lots.length,checked=s.lots.filter(function(l){return l.checked;}).length;
   var filtered=[];
   s.lots.forEach(function(l,i){if(!search||l.num.toLowerCase().includes(search))filtered.push({idx:i,lot:l});});
   filtered.sort(function(a,b){
@@ -451,14 +456,22 @@ function renderLots(cat){
     var na=parseFloat(a.lot.num),nb=parseFloat(b.lot.num);
     return(!isNaN(na)&&!isNaN(nb))?na-nb:a.lot.num.localeCompare(b.lot.num);
   });
-  var h='<div class="lot-stats">'+
+  return filtered;
+}
+function renderLotStats(cat){
+  var el=$('lot-stats-'+cat);if(!el)return;
+  var s=localState[cat];
+  var total=s.lots.length,checked=s.lots.filter(function(l){return l.checked;}).length;
+  el.innerHTML=
     '<div class="lot-stat"><div class="sv navy">'+total+'</div><div class="sl2">Total</div></div>'+
     '<div class="lot-stat"><div class="sv green">'+checked+'</div><div class="sl2">Verified</div></div>'+
-    '<div class="lot-stat"><div class="sv orange">'+(total-checked)+'</div><div class="sl2">Remaining</div></div>'+
-  '</div>'+
-  '<input class="search-box" type="text" placeholder="Search lot numbers..." value="'+(s.lotSearch||'')+'" oninput="lotSearch(\''+cat+'\',this.value)">'+
-  '<div class="lot-list">';
-  if(!filtered.length)h+='<div class="empty">No lot numbers match your search.</div>';
+    '<div class="lot-stat"><div class="sv orange">'+(total-checked)+'</div><div class="sl2">Remaining</div></div>';
+}
+function renderLotItems(cat){
+  var el=$('lot-list-'+cat);if(!el)return;
+  var filtered=getFilteredLots(cat);
+  var h='';
+  if(!filtered.length)h='<div class="empty">No lot numbers match your search.</div>';
   filtered.forEach(function(item){
     var l=item.lot,i=item.idx;
     h+='<div class="lot-item'+(l.checked?' checked':'')+'" onclick="toggleLot(\''+cat+'\','+i+')">'+
@@ -466,11 +479,23 @@ function renderLots(cat){
       '<span class="lot-num">'+l.num+'</span>'+(l.checked?'<span class="lot-extra">✓ verified</span>':'')+
     '</div>';
   });
-  h+='</div><div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">'+
-    '<button class="btn-outline" onclick="uncheckAll(\''+cat+'\')">Uncheck all</button>'+
-    '<button class="btn-danger" onclick="clearLots(\''+cat+'\')">Clear lots</button>'+
-  '</div><div style="height:5rem;"></div>';
   el.innerHTML=h;
+}
+function renderLots(cat){
+  var el=$('lot-content-'+cat);if(!el)return;
+  var s=localState[cat];
+  if(!s.lots.length){el.innerHTML='';return;}
+  // Build full structure once — search box is only created here, not on each keystroke
+  el.innerHTML=
+    '<div class="lot-stats" id="lot-stats-'+cat+'"></div>'+
+    '<input class="search-box" type="text" placeholder="Search lot numbers..." value="'+(s.lotSearch||'')+'" oninput="lotSearch(\''+cat+'\',this.value)" autocomplete="off" autocorrect="off" autocapitalize="off">'+
+    '<div class="lot-list" id="lot-list-'+cat+'"></div>'+
+    '<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">'+
+      '<button class="btn-outline" onclick="uncheckAll(\''+cat+'\')">Uncheck all</button>'+
+      '<button class="btn-danger" onclick="clearLots(\''+cat+'\')">Clear lots</button>'+
+    '</div><div style="height:5rem;"></div>';
+  renderLotStats(cat);
+  renderLotItems(cat);
 }
 
 // Missing tags
