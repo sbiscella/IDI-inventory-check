@@ -103,6 +103,13 @@ button{touch-action:manipulation;}
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+// Backup: if Google's CDN was blocked, try cdnjs
+if (typeof firebase === 'undefined' || !firebase.database) {
+  document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"><\/script>');
+  document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-database-compat.min.js"><\/script>');
+}
+</script>
 </head>
 <body>
 <div id="toast" class="toast"></div>
@@ -137,7 +144,10 @@ button{touch-action:manipulation;}
 </div>
 
 <script>
-// Init Firebase
+// Init Firebase (with safe fallback so the app never crashes if Firebase can't load)
+var FIREBASE_OK = (typeof firebase !== 'undefined' && firebase.database);
+var db;
+if (FIREBASE_OK) {
 firebase.initializeApp({
   apiKey:"AIzaSyDOgxXK-bLNc7NHYHaAzooTjrj8WfDuY2o",
   authDomain:"idi-inventory-check.firebaseapp.com",
@@ -147,7 +157,17 @@ firebase.initializeApp({
   messagingSenderId:"365800363327",
   appId:"1:365800363327:web:7843a4fa24b0588b752f8a"
 });
-var db = firebase.database();
+db = firebase.database();
+} else {
+  // Stub so the UI still loads; nothing will save until Firebase is reachable
+  var _stubRef = { on:function(){}, set:function(){return Promise.reject();}, push:function(){return Promise.reject();}, update:function(){return Promise.reject();}, remove:function(){return Promise.reject();} };
+  db = { ref:function(){return _stubRef;} };
+  window.addEventListener('load', function(){
+    var el=document.getElementById('syncDot');
+    if(el){el.textContent='⚠ Offline';el.className='sync-dot err';}
+    alert('Could not reach Firebase, so nothing will save or sync. Check your connection, turn off any content blocker for this site, and reload.');
+  });
+}
 
 var T=1,W=42;
 var CATS=['raw','rip','moulded','glue','missing'];
