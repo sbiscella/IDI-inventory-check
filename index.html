@@ -98,6 +98,10 @@ input[type="file"].file-input{display:none;}
 .rt-label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);}
 .rt-val{font-size:24px;font-weight:700;font-family:monospace;line-height:1.1;}
 .rt-sub{font-size:12px;color:rgba(255,255,255,.7);text-align:right;}
+.zoom-wrap{display:none;align-items:center;gap:10px;margin:10px 16px 0;color:#fff;font-size:14px;}
+.zoom-wrap input[type=range]{flex:1;width:auto;padding:0;border:none;background:transparent;}
+.scan-photo{margin:10px 16px 0;}
+.scan-photo button{width:100%;padding:12px;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;}
 .mode-toggle{display:flex;background:#e8edf4;border-radius:12px;padding:3px;gap:3px;margin-top:1rem;}
 .mode-btn{flex:1;padding:11px 0;border:none;border-radius:9px;font-size:14px;font-weight:600;background:transparent;color:#6a8bb0;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;touch-action:manipulation;}
 .mode-btn.active{background:#0d2340;color:#fff;}
@@ -167,6 +171,11 @@ if (typeof firebase === 'undefined' || !firebase.database) {
 <div id="scanOverlay" class="scan-overlay">
   <div class="scan-top"><span id="scanTitle">Scan barcode</span><button onclick="closeScanner()">Done</button></div>
   <div id="scan-reader"></div>
+  <div id="zoomWrap" class="zoom-wrap"><span>🔍 Zoom</span><input type="range" id="zoomSlider" min="1" max="4" step="0.1" value="1" oninput="onZoom(this.value)"><span id="zoomVal">1.0x</span></div>
+  <div class="scan-photo">
+    <button onclick="scanFromPhoto()">📸 Tag too far? Take a photo (uses your camera's zoom)</button>
+    <input type="file" id="scanPhoto" accept="image/*" capture="environment" style="display:none" onchange="onPhotoChosen(event)">
+  </div>
   <div id="scanResult" class="scan-result">Point the camera at a barcode</div>
   <div id="scanExtra" class="scan-extra"><button onclick="scanAddMissing()">Add to Missing Tags</button></div>
   <div class="scan-manual">
@@ -519,26 +528,47 @@ function handleFile(event,cat){var f=event.target.files[0];if(f)processFile(f,ca
 function processFile(file,cat){
   var reader=new FileReader();
   reader.onload=function(e){
-    var lots=parseCSV(e.target.result);
+    var lots=parseLotCSV(e.target.result);
     if(!lots.length){alert('No lot numbers found. Make sure your CSV has a "Lot Number" column.');return;}
-    lots.sort(function(a,b){var na=parseFloat(a),nb=parseFloat(b);return(!isNaN(na)&&!isNaN(nb))?na-nb:a.localeCompare(b);});
-    var items=lots.map(function(num){return{num:String(num).trim(),checked:false};});
+    lots.sort(lotSortFn);
+    var items=lots.map(function(o){return{num:String(o.num).trim(),checked:false};});
     setSync('','Saving...');
     db.ref('lots/'+cat).set({items:items}).then(function(){
-      showToast(lots.length+' lot numbers loaded!');
+      showToast(items.length+' lot numbers loaded!');
     }).catch(function(){alert('Failed to save lots. Check Firebase rules.');setSync('err','⚠ Error');});
   };
   reader.readAsText(file);
 }
-function parseCSV(text){
+function splitCSVLine(line){
+  var out=[],cur='',q=false;
+  for(var i=0;i<line.length;i++){
+    var c=line.charAt(i);
+    if(q){
+      if(c==='"'){if(line.charAt(i+1)==='"'){cur+='"';i++;}else q=false;}
+      else cur+=c;
+    }else if(c==='"'){q=true;}
+    else if(c===','){out.push(cur);cur='';}
+    else cur+=c;
+  }
+  out.push(cur);
+  return out;
+}
+function normH(h){return String(h).toLowerCase().replace(/[^a-z]/g,'');}
+function parseLotCSV(text){
+  text=String(text).replace(/^\ufeff/,'');
   var lines=text.split(/\r?\n/).filter(function(l){return l.trim();});
-  if(!lines.length)return[];
-  var headers=lines[0].split(',').map(function(h){return h.replace(/"/g,'').trim().toLowerCase();});
+  if(!lines.length)return [];
+  var headers=splitCSVLine(lines[0]).map(normH);
+  var lotNames=['lotnumber','lotno','lotnum','lotnbr','lot','lotid'];
   var colIdx=-1;
-  for(var h=0;h<headers.length;h++){if(headers[h]==='lot number'||headers[h]==='lot no'||headers[h]==='lot#'||headers[h]==='lot'){colIdx=h;break;}}
-  if(colIdx===-1)colIdx=0;
+  headers.forEach(function(h,i){if(colIdx<0&&lotNames.indexOf(h)>=0)colIdx=i;});
+  if(colIdx<0)colIdx=0;
   var lots=[];
-  for(var i=1;i<lines.length;i++){var cols=lines[i].split(',');if(cols.length>colIdx){var val=cols[colIdx].replace(/"/g,'').trim();if(val)lots.push(val);}}
+  for(var i=1;i<lines.length;i++){
+    var cols=splitCSVLine(lines[i]);
+    var num=String(cols[colIdx]||'').trim();
+    if(num)lots.push({num:num});
+  }
   return lots;
 }
 
@@ -707,7 +737,7 @@ function renderReport(){
 // ===== END REPORT =====
 
 // ===== BARCODE SCANNER =====
-var scanner=null,scanMode=null,scanCat=null,lastScan='',lastScanTime=0,scanCount=0,lastNotFound=null;
+var scanner=null,scanMode=null,scanCat=null,lastScan='',lastScanTime=0,scanCount=0,lastNotFound=null,zoomFeature=null;
 function setScanMsg(msg,cls){var el=$('scanResult');el.textContent=msg;el.className='scan-result'+(cls?' '+cls:'');}
 function loadScannerLib(cb){
   if(window.Html5Qrcode){cb(true);return;}
@@ -718,8 +748,9 @@ function loadScannerLib(cb){
   document.head.appendChild(s);
 }
 function openScanner(mode,cat){
-  scanMode=mode;scanCat=cat;scanCount=0;lastScan='';lastNotFound=null;
+  scanMode=mode;scanCat=cat;scanCount=0;lastScan='';lastNotFound=null;zoomFeature=null;
   $('scanExtra').style.display='none';
+  $('zoomWrap').style.display='none';
   $('scanTitle').textContent=mode==='verify'?'Verify – '+CAT_NAMES[cat]:'Scan lot number';
   $('scanOverlay').style.display='flex';
   setScanMsg('Starting camera...','');
@@ -728,28 +759,94 @@ function openScanner(mode,cat){
     startScanner();
   });
 }
-function startScanner(){
+// Scan area: most of the picture, so small / far-away tags are still inside it
+function scanBox(vw,vh){return {width:Math.max(150,Math.floor(vw*0.9)),height:Math.max(100,Math.floor(vh*0.5))};}
+function startScanner(keepMsg){
   if(scanner)return;
-  try{
-    scanner=new Html5Qrcode('scan-reader');
-    scanner.start(
-      {facingMode:'environment'},
-      {fps:10,qrbox:{width:260,height:130},experimentalFeatures:{useBarCodeDetectorIfSupported:true}},
-      onScanSuccess,
-      function(){}
-    ).then(function(){
-      setScanMsg(scanMode==='verify'?'Point the camera at a lot barcode':'Point the camera at a barcode','');
+  var base={fps:10,qrbox:scanBox,experimentalFeatures:{useBarCodeDetectorIfSupported:true}};
+  // First try a high-resolution feed (more pixels = far barcodes stay readable); fall back to the normal feed if the phone refuses.
+  var hi=Object.assign({},base,{videoConstraints:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}});
+  var attempt=function(config,isRetry){
+    var inst;
+    try{inst=new Html5Qrcode('scan-reader');}
+    catch(e){setScanMsg('Camera unavailable. Type the lot number below.','err');return;}
+    scanner=inst;
+    inst.start({facingMode:'environment'},config,onScanSuccess,function(){}).then(function(){
+      if(!keepMsg)setScanMsg(scanMode==='verify'?'Point the camera at a lot barcode':'Point the camera at a barcode','');
+      setupZoom();
     }).catch(function(){
+      try{inst.clear();}catch(e){}
       scanner=null;
-      setScanMsg('Camera unavailable. Allow camera access for this site, or type the lot number below.','err');
+      if(!isRetry){attempt(base,true);}
+      else{setScanMsg('Camera unavailable. Allow camera access for this site, or type the lot number below.','err');}
     });
-  }catch(e){scanner=null;setScanMsg('Camera unavailable. Type the lot number below.','err');}
+  };
+  attempt(hi,false);
+}
+// Camera zoom slider: only appears if this phone/browser allows zoom control
+function setupZoom(){
+  var wrap=$('zoomWrap');
+  wrap.style.display='none';zoomFeature=null;
+  try{
+    var caps=scanner&&scanner.getRunningTrackCameraCapabilities&&scanner.getRunningTrackCameraCapabilities();
+    var z=caps&&caps.zoomFeature&&caps.zoomFeature();
+    if(z&&z.isSupported()){
+      var mn=z.min(),mx=z.max(),st=z.step()||0.1;
+      var sl=$('zoomSlider');
+      sl.min=mn;sl.max=mx;sl.step=st;
+      var start=Math.min(mx,Math.max(mn,2));
+      sl.value=start;
+      zoomFeature=z;
+      onZoom(start);
+      wrap.style.display='flex';
+    }
+  }catch(e){zoomFeature=null;}
+}
+function onZoom(v){
+  v=parseFloat(v);
+  if(zoomFeature){
+    try{var p=zoomFeature.apply(v);if(p&&p.catch)p.catch(function(){});}catch(e){}
+  }
+  $('zoomVal').textContent=v.toFixed(1)+'x';
 }
 function closeScanner(){
-  var finish=function(){scanner=null;$('scanOverlay').style.display='none';};
+  var finish=function(){scanner=null;zoomFeature=null;$('zoomWrap').style.display='none';$('scanOverlay').style.display='none';};
   if(scanner){
-    scanner.stop().then(function(){try{scanner.clear();}catch(e){}finish();}).catch(finish);
+    var s=scanner;
+    s.stop().then(function(){try{s.clear();}catch(e){}finish();}).catch(finish);
   }else{finish();}
+}
+// Take a still photo with the phone's own camera app (has real zoom), then read the barcode from the photo
+function scanFromPhoto(){
+  var inp=$('scanPhoto');
+  inp.value='';
+  inp.click();
+}
+function onPhotoChosen(ev){
+  var f=ev.target.files&&ev.target.files[0];
+  if(!f)return;
+  setScanMsg('Reading photo...','');
+  var stopLive=function(cb){
+    if(scanner){
+      var s=scanner;scanner=null;zoomFeature=null;$('zoomWrap').style.display='none';
+      s.stop().then(function(){try{s.clear();}catch(e){}cb();}).catch(function(){cb();});
+    }else cb();
+  };
+  stopLive(function(){
+    var inst;
+    try{inst=new Html5Qrcode('scan-reader');}
+    catch(e){setScanMsg('Could not read the photo. Type the lot number below.','err');return;}
+    inst.scanFile(f,false).then(function(text){
+      try{inst.clear();}catch(e){}
+      lastScan='';
+      handleScanned(text);
+      if($('scanOverlay').style.display!=='none')startScanner(true);
+    }).catch(function(){
+      try{inst.clear();}catch(e){}
+      setScanMsg('No barcode found in that photo. Zoom in on the tag and try again.','warn');
+      startScanner(true);
+    });
+  });
 }
 function onScanSuccess(text){
   var now=Date.now();
@@ -785,8 +882,14 @@ function handleScanned(text){
     setScanMsg('No lot list loaded for '+CAT_NAMES[scanCat]+'. Upload a CSV first.','warn');
     return;
   }
+  // If a lot number appears more than once, prefer a row that is not verified yet
   var idx=-1;
-  for(var i=0;i<lots.length;i++){if(sameLot(lots[i].num,text)){idx=i;break;}}
+  for(var i=0;i<lots.length;i++){
+    if(sameLot(lots[i].num,text)){
+      if(idx===-1)idx=i;
+      if(!lots[i].checked){idx=i;break;}
+    }
+  }
   if(idx===-1){
     lastNotFound={text:text,cat:scanCat};
     setScanMsg('✗ '+text+' is not in the '+CAT_NAMES[scanCat]+' list','err');
@@ -802,7 +905,8 @@ function handleScanned(text){
   scanCount++;
   db.ref('lots/'+scanCat).set({items:lots});
   var left=lots.filter(function(l){return !l.checked;}).length;
-  setScanMsg('✓ Verified '+lots[idx].num+'  ('+scanCount+' this session, '+left+' left)','ok');
+  var msg='✓ Verified '+lots[idx].num+'  ('+scanCount+' this session, '+left+' left)';
+  setScanMsg(msg,'ok');
 }
 function scanAddMissing(){
   if(!lastNotFound)return;
