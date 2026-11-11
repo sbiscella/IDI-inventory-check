@@ -106,11 +106,18 @@ input[type="file"].file-input{display:none;}
 .scan-manual button.scan-photo-btn{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35);}
 .scan-manual button.scan-photo-btn.primary{background:#fff;color:#0d2340;border-color:#fff;}
 .scan-result{margin:0 16px 8px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:15px;font-weight:600;text-align:center;}
-.scan-extra{margin:0 16px 8px;display:none;}
 .zoom-wrap{display:none;align-items:center;gap:10px;margin:0 16px 6px;color:#fff;font-size:14px;}
 .zoom-wrap input[type=range]{flex:1;width:auto;padding:0;border:none;background:transparent;}
 .zoom-hint{display:none;margin:0 16px 4px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);font-size:12px;line-height:1.35;}
 #scan-reader{width:100%;max-width:520px;margin:0 auto;background:#000;min-height:200px;flex-shrink:0;}
+.nf-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;padding:20px;}
+.nf-card{background:#fff;border-radius:18px;padding:22px 20px;max-width:360px;width:100%;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.4);}
+.nf-icon{font-size:34px;line-height:1;}
+.nf-title{font-size:20px;font-weight:700;color:#B53030;margin:8px 0 6px;}
+.nf-body{font-size:15px;color:#0d2340;line-height:1.45;margin-bottom:16px;}
+.nf-primary{width:100%;padding:14px;background:#0d2340;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer;margin-bottom:8px;}
+.nf-secondary{width:100%;padding:12px;background:transparent;color:#6a8bb0;border:1px solid rgba(13,35,64,.2);border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;}
+.mt-item.editing{border-color:#6a8bb0;box-shadow:0 0 0 2px rgba(106,139,176,.35);}
 .mode-toggle{display:flex;background:#e8edf4;border-radius:12px;padding:3px;gap:3px;margin-top:1rem;}
 .mode-btn{flex:1;padding:11px 0;border:none;border-radius:9px;font-size:14px;font-weight:600;background:transparent;color:#6a8bb0;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;touch-action:manipulation;}
 .mode-btn.active{background:#0d2340;color:#fff;}
@@ -121,7 +128,6 @@ input[type="file"].file-input{display:none;}
 .scan-result.ok{background:#2D7A4F;}
 .scan-result.warn{background:#b7791f;}
 .scan-result.err{background:#B53030;}
-.scan-extra button{width:100%;padding:12px;background:#fff;color:#0d2340;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;}
 .lot-input-row{display:flex;gap:8px;}
 .lot-input-row input{flex:1;}
 .lot-input-row button{padding:0 14px;background:#6a8bb0;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;}
@@ -180,13 +186,21 @@ if (typeof firebase === 'undefined' || !firebase.database) {
     </div>
     <input type="file" id="scanPhoto" accept="image/*" capture="environment" style="display:none" onchange="onPhotoChosen(event)">
     <div id="scanResult" class="scan-result">Point the camera at a barcode</div>
-    <div id="scanExtra" class="scan-extra"><button onclick="scanAddMissing()">Add to Missing Tags</button></div>
     <div id="zoomWrap" class="zoom-wrap"><span>🔍 Zoom</span><input type="range" id="zoomSlider" min="1" max="4" step="0.1" value="1" oninput="onZoom(this.value)"><span id="zoomVal">1.0x</span></div>
     <div id="zoomHint" class="zoom-hint">Live zoom isn't available on iPhone. For far-away tags, tap 📸 Photo and use your Camera's zoom.</div>
   </div>
   <div id="scan-reader"></div>
 </div>
 
+<div id="notFoundModal" class="nf-modal">
+  <div class="nf-card">
+    <div class="nf-icon">⚠️</div>
+    <div class="nf-title">Not in the lot list</div>
+    <div class="nf-body" id="nfBody"></div>
+    <button class="nf-primary" onclick="nfEnterDetails()">Enter what's on the bundle</button>
+    <button class="nf-secondary" onclick="nfKeepScanning()">Keep scanning</button>
+  </div>
+</div>
 <div class="counter-fab" id="counterFab">
   <div class="counter-box">
     <div class="counter-label">Counter</div>
@@ -234,6 +248,9 @@ var currentTab='raw';
 var localState={};
 CATS.forEach(function(c){localState[c]={bundles:{},editingId:null,lots:[],lotSearch:'',counter:0,mode:'manual'};});
 var missingTags={};
+var pendingMissing={};
+var editingTagKey=null,editDraft=null;
+var nfOpen=false,nfKey=null,nfText='';
 var pendingLocal={raw:{},rip:{},moulded:{}};
 var fbConnected=false;
 var resetPending=false,resetTimer=null;
@@ -256,7 +273,7 @@ BF_CATS.forEach(function(cat){
   },function(){setSync('err','⚠ Offline');});
 });
 db.ref('missingTags').on('value',function(snap){
-  missingTags=snap.val()||{};
+  missingTags=Object.assign({},snap.val()||{},pendingMissing);
   renderMissingTags();
 });
 // Lot listeners for all tabs
@@ -741,7 +758,7 @@ function renderReport(){
 // ===== END REPORT =====
 
 // ===== BARCODE SCANNER =====
-var scanner=null,scanMode=null,scanCat=null,lastScan='',lastScanTime=0,scanCount=0,lastNotFound=null,zoomFeature=null;
+var scanner=null,scanMode=null,scanCat=null,lastScan='',lastScanTime=0,scanCount=0,zoomFeature=null;
 function setScanMsg(msg,cls){var el=$('scanResult');el.textContent=msg;el.className='scan-result'+(cls?' '+cls:'');}
 function loadScannerLib(cb){
   if(window.Html5Qrcode){cb(true);return;}
@@ -752,8 +769,7 @@ function loadScannerLib(cb){
   document.head.appendChild(s);
 }
 function openScanner(mode,cat){
-  scanMode=mode;scanCat=cat;scanCount=0;lastScan='';lastNotFound=null;zoomFeature=null;
-  $('scanExtra').style.display='none';
+  scanMode=mode;scanCat=cat;scanCount=0;lastScan='';zoomFeature=null;
   resetZoomUI();
   $('scanTitle').textContent=mode==='verify'?'Verify – '+CAT_NAMES[cat]:'Scan lot number';
   $('scanOverlay').style.display='flex';
@@ -823,7 +839,7 @@ function onZoom(v){
   $('zoomVal').textContent=v.toFixed(1)+'x';
 }
 function closeScanner(){
-  var finish=function(){scanner=null;zoomFeature=null;resetZoomUI();$('scanOverlay').style.display='none';};
+  var finish=function(){scanner=null;zoomFeature=null;resetZoomUI();$('notFoundModal').style.display='none';nfOpen=false;$('scanOverlay').style.display='none';};
   if(scanner){
     var s=scanner;
     s.stop().then(function(){try{s.clear();}catch(e){}finish();}).catch(finish);
@@ -883,6 +899,7 @@ function sameLot(a,b){
 function handleScanned(text){
   text=String(text).trim();
   if(!text)return;
+  if(nfOpen)return;   // a "not in the list" pop-up is already showing
   if(navigator.vibrate)navigator.vibrate(60);
   if(scanMode==='fill'){
     $('mt-lot').value=text;
@@ -903,13 +920,7 @@ function handleScanned(text){
       if(!lots[i].checked){idx=i;break;}
     }
   }
-  if(idx===-1){
-    lastNotFound={text:text,cat:scanCat};
-    setScanMsg('✗ '+text+' is not in the '+CAT_NAMES[scanCat]+' list','err');
-    $('scanExtra').style.display='block';
-    return;
-  }
-  $('scanExtra').style.display='none';
+  if(idx===-1){handleNotInList(text);return;}
   if(lots[idx].checked){
     setScanMsg('Already verified: '+lots[idx].num,'warn');
     return;
@@ -921,15 +932,39 @@ function handleScanned(text){
   var msg='✓ Verified '+lots[idx].num+'  ('+scanCount+' this session, '+left+' left)';
   setScanMsg(msg,'ok');
 }
-function scanAddMissing(){
-  if(!lastNotFound)return;
-  var nf=lastNotFound;
+// A lot that is not on the list: tell the user, log it as a missing tag, and offer to enter what is on the bundle
+function handleNotInList(text){
+  var catName=CAT_NAMES[scanCat],existing=null;
+  Object.keys(missingTags).forEach(function(k){
+    var t=missingTags[k];
+    if(t&&t.cat===catName&&sameLot(t.lot,text))existing=k;
+  });
+  var added=false;
+  if(!existing){
+    existing=createMissingTag({lot:text,cat:catName,desc:'',loc:'',found:false,createdAt:Date.now()});
+    added=true;
+  }
+  nfKey=existing;nfText=text;nfOpen=true;
+  $('nfBody').innerHTML='Lot <b>'+esc(text)+'</b> is not in the '+esc(catName)+' list.<br>'+
+    (added?'It has been added to Missing Tags.':'It is already in Missing Tags.');
+  $('notFoundModal').style.display='flex';
+  setScanMsg('✗ '+text+' is not in the '+catName+' list','err');
+  if(navigator.vibrate)navigator.vibrate([100,60,100]);
+}
+function nfKeepScanning(){
+  $('notFoundModal').style.display='none';
+  nfOpen=false;
+  lastScan=nfText;lastScanTime=Date.now();   // don't pop up again for the same tag right away
+}
+function nfEnterDetails(){
+  var key=nfKey;
+  $('notFoundModal').style.display='none';
+  nfOpen=false;
   closeScanner();
   switchTab('missing');
-  $('mt-lot').value=nf.text;
-  $('mt-cat').value=CAT_NAMES[nf.cat]||'';
-  window.scrollTo(0,0);
-  showToast('Lot '+nf.text+' ready to add');
+  startTagEdit(key);
+  var card=$('mt-card-'+key);
+  if(card&&card.scrollIntoView)card.scrollIntoView({block:'center'});
 }
 // ===== END BARCODE SCANNER =====
 
@@ -1008,25 +1043,80 @@ function renderLots(cat){
 }
 
 // Missing tags
+function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+// Creates the entry on screen right away; the cloud save finishes in the background (and retries on a weak connection).
+function createMissingTag(obj){
+  var key=null;
+  if(FIREBASE_OK){
+    try{
+      var r=db.ref('missingTags').push();
+      key=r.key;
+      r.set(obj).catch(function(){
+        pendingMissing[key]=obj;missingTags[key]=obj;
+        renderMissingTags();setSync('err','⚠ Not synced');
+        showToast('Not synced - kept on this phone only');
+      });
+    }catch(e){key=null;}
+  }
+  if(!key){
+    key='local_'+Date.now()+'_'+Math.floor(Math.random()*1000);
+    pendingMissing[key]=obj;
+    setSync('err','⚠ Not synced');
+  }
+  missingTags[key]=obj;
+  renderMissingTags();
+  return key;
+}
 function addMissingTag(){
   var lot=$('mt-lot').value.trim(),cat=$('mt-cat').value,desc=$('mt-desc').value.trim(),loc=$('mt-loc').value.trim();
   if(!lot){alert('Please enter a lot number.');return;}
   if(!cat){alert('Please select a category.');return;}
-  db.ref('missingTags').push({lot:lot,cat:cat,desc:desc,loc:loc,found:false,createdAt:Date.now()})
-    .then(function(){$('mt-lot').value='';$('mt-cat').value='';$('mt-desc').value='';$('mt-loc').value='';showToast('Entry saved!');})
-    .catch(function(){alert('Failed to save.');});
+  createMissingTag({lot:lot,cat:cat,desc:desc,loc:loc,found:false,createdAt:Date.now()});
+  $('mt-lot').value='';$('mt-cat').value='';$('mt-desc').value='';$('mt-loc').value='';
+  showToast('Entry saved!');
+}
+function updateMissingTag(key,fields){
+  var t=missingTags[key];if(!t)return;
+  Object.keys(fields).forEach(function(k){t[k]=fields[k];});
+  renderMissingTags();
+  if(pendingMissing[key]||!FIREBASE_OK)return;
+  db.ref('missingTags/'+key).update(fields).catch(function(){alert('Failed to update.');});
 }
 function toggleFound(key){
   var tag=missingTags[key];if(!tag)return;
-  db.ref('missingTags/'+key).update({found:!tag.found}).catch(function(){alert('Failed.');});
+  updateMissingTag(key,{found:!tag.found});
 }
 function deleteMissingTag(key){
   if(!confirm('Delete this entry?'))return;
-  db.ref('missingTags/'+key).remove().catch(function(){alert('Failed.');});
+  var wasLocal=!!pendingMissing[key];
+  delete pendingMissing[key];delete missingTags[key];
+  if(editingTagKey===key){editingTagKey=null;editDraft=null;}
+  renderMissingTags();
+  if(!wasLocal&&FIREBASE_OK)db.ref('missingTags/'+key).remove().catch(function(){alert('Failed.');});
+}
+function startTagEdit(key){
+  editingTagKey=key;editDraft=null;
+  renderMissingTags();
+  var d=$('mt-ed-desc-'+key);
+  if(d)d.focus();
+}
+function cancelTagEdit(){editingTagKey=null;editDraft=null;renderMissingTags();}
+function saveTagEdit(key){
+  var d=$('mt-ed-desc-'+key),l=$('mt-ed-loc-'+key);
+  if(!d||!l)return;
+  var desc=d.value.trim(),loc=l.value.trim();
+  editingTagKey=null;editDraft=null;
+  updateMissingTag(key,{desc:desc,loc:loc});
+  showToast('Saved');
 }
 function renderMissingTags(){
   if(currentTab==='report')renderReport();
   var el=$('mt-list');if(!el)return;
+  // keep whatever is being typed in the open edit form if the list redraws
+  if(editingTagKey){
+    var dd=$('mt-ed-desc-'+editingTagKey),ll=$('mt-ed-loc-'+editingTagKey);
+    if(dd&&ll)editDraft={key:editingTagKey,desc:dd.value,loc:ll.value};
+  }
   var entries=Object.entries(missingTags).sort(function(a,b){return(a[1].createdAt||0)-(b[1].createdAt||0);});
   if(!entries.length){el.innerHTML='<div class="empty">No missing tags logged yet.</div>';return;}
   var total=entries.length,found=entries.filter(function(e){return e[1].found;}).length;
@@ -1037,15 +1127,30 @@ function renderMissingTags(){
   '</div>';
   entries.forEach(function(entry){
     var key=entry[0],t=entry[1];
-    h+='<div class="mt-item'+(t.found?' found':'')+'">'+
-      '<div class="mt-header"><div><div class="mt-lot">'+t.lot+'</div>'+(t.found?'<div class="mt-found-badge">✓ Found</div>':'')+
-      '</div><span class="mt-cat">'+t.cat+'</span></div>'+
-      (t.desc?'<div class="mt-desc">'+t.desc+'</div>':'')+
-      (t.loc?'<div class="mt-loc">📍 '+t.loc+'</div>':'')+
-      '<div class="mt-actions">'+
-        '<button class="btn-found'+(t.found?' active':'')+'" onclick="toggleFound(\''+key+'\')">'+(t.found?'✓ Found':'Mark Found')+'</button>'+
-        '<button class="bd2" onclick="deleteMissingTag(\''+key+'\')">Delete</button>'+
-      '</div></div>';
+    var editing=(editingTagKey===key);
+    var unsynced=pendingMissing[key]?'<span class="stag" style="color:#B53030;">not synced</span>':'';
+    h+='<div class="mt-item'+(t.found?' found':'')+(editing?' editing':'')+'" id="mt-card-'+key+'">'+
+      '<div class="mt-header"><div><div class="mt-lot">'+esc(t.lot)+unsynced+'</div>'+(t.found?'<div class="mt-found-badge">✓ Found</div>':'')+
+      '</div><span class="mt-cat">'+esc(t.cat)+'</span></div>';
+    if(editing){
+      var dv=(editDraft&&editDraft.key===key)?editDraft.desc:(t.desc||'');
+      var lv=(editDraft&&editDraft.key===key)?editDraft.loc:(t.loc||'');
+      h+='<div class="mt-edit">'+
+        '<div class="f" style="margin-top:8px;"><label>What is on the bundle?</label><textarea id="mt-ed-desc-'+key+'" style="font-size:16px;" placeholder="Describe the item...">'+esc(dv)+'</textarea></div>'+
+        '<div class="f" style="margin-top:8px;"><label>Location</label><input type="text" id="mt-ed-loc-'+key+'" placeholder="e.g. Aisle 3, Bay 2" value="'+esc(lv)+'"></div>'+
+        '<div class="mt-actions"><button class="bs" onclick="saveTagEdit(\''+key+'\')">Save</button><button class="bc" onclick="cancelTagEdit()">Cancel</button></div>'+
+      '</div>';
+    }else{
+      h+=(t.desc?'<div class="mt-desc">'+esc(t.desc)+'</div>':'')+
+        (t.loc?'<div class="mt-loc">📍 '+esc(t.loc)+'</div>':'')+
+        (!t.desc&&!t.loc?'<div class="mt-desc" style="font-style:italic;">No details yet - tap Edit to add them.</div>':'')+
+        '<div class="mt-actions">'+
+          '<button class="btn-found'+(t.found?' active':'')+'" onclick="toggleFound(\''+key+'\')">'+(t.found?'✓ Found':'Mark Found')+'</button>'+
+          '<button class="be" onclick="startTagEdit(\''+key+'\')">Edit</button>'+
+          '<button class="bd2" onclick="deleteMissingTag(\''+key+'\')">Delete</button>'+
+        '</div>';
+    }
+    h+='</div>';
   });
   el.innerHTML=h;
 }
