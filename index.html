@@ -87,6 +87,38 @@ input[type="file"].file-input{display:none;}
 .mt-actions{display:flex;gap:5px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(13,35,64,0.08);}
 .btn-found{padding:6px 12px;font-size:12px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;border:1px solid rgba(45,122,79,0.3);border-radius:7px;background:transparent;color:#2D7A4F;cursor:pointer;}
 .btn-found.active{background:#2D7A4F;color:#fff;border-color:#2D7A4F;}
+.rep-card{background:#fff;border:1px solid rgba(13,35,64,0.1);border-radius:14px;padding:12px 14px;margin-bottom:10px;}
+.rep-title{font-size:14px;font-weight:700;color:#0d2340;margin-bottom:8px;}
+.rep-row{display:flex;justify-content:space-between;font-size:13px;color:#6a8bb0;padding:3px 0;}
+.rep-row b{color:#0d2340;font-family:monospace;}
+.rep-row b.good{color:#2D7A4F;}
+.rep-row b.bad{color:#B53030;}
+.rep-note{font-size:12px;color:#6a8bb0;margin-top:4px;}
+.run-total{display:flex;justify-content:space-between;align-items:center;background:#0d2340;color:#fff;border-radius:12px;padding:12px 14px;margin-bottom:8px;}
+.rt-label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);}
+.rt-val{font-size:24px;font-weight:700;font-family:monospace;line-height:1.1;}
+.rt-sub{font-size:12px;color:rgba(255,255,255,.7);text-align:right;}
+.mode-toggle{display:flex;background:#e8edf4;border-radius:12px;padding:3px;gap:3px;margin-top:1rem;}
+.mode-btn{flex:1;padding:11px 0;border:none;border-radius:9px;font-size:14px;font-weight:600;background:transparent;color:#6a8bb0;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;touch-action:manipulation;}
+.mode-btn.active{background:#0d2340;color:#fff;}
+.scan-btn{width:100%;margin-bottom:10px;padding:13px;background:#6a8bb0;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;cursor:pointer;}
+.scan-btn:active{opacity:.85;}
+.scan-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:#0d2340;z-index:200;display:none;flex-direction:column;overflow-y:auto;}
+.scan-top{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;color:#fff;font-weight:600;font-size:15px;}
+.scan-top button{padding:8px 18px;background:#fff;color:#0d2340;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;}
+#scan-reader{width:100%;max-width:520px;margin:0 auto;background:#000;min-height:200px;}
+.scan-result{margin:12px 16px;padding:14px;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:16px;font-weight:600;text-align:center;}
+.scan-result.ok{background:#2D7A4F;}
+.scan-result.warn{background:#b7791f;}
+.scan-result.err{background:#B53030;}
+.scan-extra{margin:0 16px 10px;display:none;}
+.scan-extra button{width:100%;padding:12px;background:#fff;color:#0d2340;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;}
+.scan-manual{display:flex;gap:8px;margin:0 16px 20px;}
+.scan-manual input{flex:1;}
+.scan-manual button{padding:0 18px;background:#6a8bb0;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;}
+.lot-input-row{display:flex;gap:8px;}
+.lot-input-row input{flex:1;}
+.lot-input-row button{padding:0 14px;background:#6a8bb0;color:#fff;border:none;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;}
 .counter-fab{position:fixed;right:14px;bottom:260px;z-index:50;display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 4px 16px rgba(13,35,64,0.3));}
 .counter-box{background:#0d2340;border-radius:16px 16px 0 0;padding:10px 14px;display:flex;flex-direction:column;align-items:center;min-width:72px;}
 .counter-label{font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-bottom:4px;}
@@ -124,12 +156,24 @@ if (typeof firebase === 'undefined' || !firebase.database) {
   <button class="tab inactive" onclick="switchTab('moulded')">Moulded Stock</button>
   <button class="tab inactive" onclick="switchTab('glue')">Glue Stock</button>
   <button class="tab inactive" onclick="switchTab('missing')">Missing Tags</button>
+  <button class="tab inactive" onclick="switchTab('report')">Report</button>
 </div>
 <div id="panel-raw" class="panel active"><div id="bf-raw"></div><div id="lots-raw"></div></div>
 <div id="panel-rip" class="panel"><div id="bf-rip"></div><div id="lots-rip"></div></div>
 <div id="panel-moulded" class="panel"><div id="bf-moulded"></div><div id="lots-moulded"></div></div>
 <div id="panel-glue" class="panel"><div id="lots-glue"></div></div>
 <div id="panel-missing" class="panel"><div id="missing-content"></div></div>
+<div id="panel-report" class="panel"><div id="report-content"></div></div>
+<div id="scanOverlay" class="scan-overlay">
+  <div class="scan-top"><span id="scanTitle">Scan barcode</span><button onclick="closeScanner()">Done</button></div>
+  <div id="scan-reader"></div>
+  <div id="scanResult" class="scan-result">Point the camera at a barcode</div>
+  <div id="scanExtra" class="scan-extra"><button onclick="scanAddMissing()">Add to Missing Tags</button></div>
+  <div class="scan-manual">
+    <input type="text" id="scanManual" placeholder="Or type the lot number" autocomplete="off" autocorrect="off" autocapitalize="off">
+    <button onclick="manualScan()">Go</button>
+  </div>
+</div>
 <div class="counter-fab" id="counterFab">
   <div class="counter-box">
     <div class="counter-label">Counter</div>
@@ -170,13 +214,15 @@ db = firebase.database();
 }
 
 var T=1,W=42;
-var CATS=['raw','rip','moulded','glue','missing'];
-var CAT_NAMES={raw:'Raw Lumber',rip:'Rip Stock',moulded:'Moulded Stock',glue:'Glue Stock',missing:'Missing Tags'};
+var CATS=['raw','rip','moulded','glue','missing','report'];
+var CAT_NAMES={raw:'Raw Lumber',rip:'Rip Stock',moulded:'Moulded Stock',glue:'Glue Stock',missing:'Missing Tags',report:'Report'};
 var BF_CATS=['raw','rip','moulded'];
 var currentTab='raw';
 var localState={};
-CATS.forEach(function(c){localState[c]={bundles:{},editingId:null,lots:[],lotSearch:'',counter:0};});
+CATS.forEach(function(c){localState[c]={bundles:{},editingId:null,lots:[],lotSearch:'',counter:0,mode:'manual'};});
 var missingTags={};
+var pendingLocal={raw:{},rip:{},moulded:{}};
+var fbConnected=false;
 var resetPending=false,resetTimer=null;
 
 function $(id){return document.getElementById(id);}
@@ -185,11 +231,15 @@ function showToast(msg){var t=$('toast');t.textContent=msg;t.style.opacity='1';s
 function setSync(cls,msg){var el=$('syncDot');el.textContent=msg;el.className='sync-dot '+cls;}
 
 // Firebase listeners
+db.ref('.info/connected').on('value',function(snap){
+  fbConnected=!!snap.val();
+  setSync(fbConnected?'ok':'err',fbConnected?'☁ Connected':'⚠ Offline');
+});
 BF_CATS.forEach(function(cat){
   db.ref('bundles/'+cat).on('value',function(snap){
-    localState[cat].bundles=snap.val()||{};
+    localState[cat].bundles=Object.assign({},snap.val()||{},pendingLocal[cat]);
     renderBundles(cat);renderTotals(cat);
-    setSync('ok','☁ Saved');
+    setSync(fbConnected?'ok':'err',fbConnected?'☁ Saved':'⚠ Offline');
   },function(){setSync('err','⚠ Offline');});
 });
 db.ref('missingTags').on('value',function(snap){
@@ -217,7 +267,7 @@ db.ref('missingTags').on('value',function(snap){
 function updateCounterDisplay(){
   $('counter-num').textContent=localState[currentTab]?localState[currentTab].counter:0;
   $('counter-tab-name').textContent=CAT_NAMES[currentTab];
-  $('counterFab').style.display=currentTab==='missing'?'none':'flex';
+  $('counterFab').style.display=(currentTab==='missing'||currentTab==='report')?'none':'flex';
 }
 function changeCounter(delta){
   var s=localState[currentTab];if(!s)return;
@@ -244,6 +294,7 @@ function handleReset(){
 // Tabs
 function switchTab(cat){
   currentTab=cat;
+  if(cat==='report')renderReport();
   CATS.forEach(function(c){$('panel-'+c).classList.toggle('active',c===cat);});
   document.querySelectorAll('.tab').forEach(function(el,i){
     el.classList.toggle('active',CATS[i]===cat);
@@ -279,7 +330,7 @@ function buildBFSection(cat){
 function buildLotsSection(cat){
   var el=$('lots-'+cat);if(!el)return;
   el.innerHTML='<p class="sl">Lot Numbers</p>'+
-    '<div class="card"><div class="upload-area" id="drop-zone-'+cat+'">'+
+    '<div class="card"><button class="scan-btn" id="scan-btn-'+cat+'" onclick="openScanner(\'verify\',\''+cat+'\')">📷 Scan Barcode to Verify</button><div class="upload-area" id="drop-zone-'+cat+'">'+
       '<strong>Load Lot Number File</strong>'+
       '<input type="file" class="file-input" id="file-input-'+cat+'" accept=".csv,.txt" onchange="handleFile(event,\''+cat+'\')">'+
       '<button class="upload-btn" onclick="document.getElementById(\'file-input-'+cat+'\').click()">📂 Choose CSV File</button>'+
@@ -297,7 +348,7 @@ function buildMissingSection(){
   var el=$('missing-content');if(!el)return;
   el.innerHTML='<p class="sl" style="margin-top:1rem;">Add Missing Tag</p>'+
     '<div class="card">'+
-      '<div class="f" style="margin-bottom:8px;"><label>Lot Number</label><input type="text" id="mt-lot" placeholder="e.g. 12345"></div>'+
+      '<div class="f" style="margin-bottom:8px;"><label>Lot Number</label><div class="lot-input-row"><input type="text" id="mt-lot" placeholder="e.g. 12345"><button type="button" onclick="openScanner(\'fill\',\'missing\')">📷 Scan</button></div></div>'+
       '<div class="f" style="margin-bottom:8px;"><label>Category</label>'+
         '<select id="mt-cat"><option value="">Select category...</option>'+
           '<option value="Raw Lumber">Raw Lumber</option><option value="Rip Stock">Rip Stock</option>'+
@@ -313,6 +364,7 @@ function buildMissingSection(){
 // Init all
 BF_CATS.forEach(function(cat){buildBFSection(cat);buildLotsSection(cat);});
 buildLotsSection('glue');
+BF_CATS.forEach(buildModeToggle);
 buildMissingSection();
 updateCounterDisplay();
 
@@ -326,14 +378,42 @@ function addBundle(cat){
   var l=parseFloat($('len-'+cat).value),p=parseInt($('rows-'+cat).value);
   var name=$('name-'+cat).value.trim(),species=$('spec-'+cat).value.trim();
   if(!l||!p||l<=0||p<=0){alert('Please fill in length and rows.');return;}
-  var btn=$('addBtn-'+cat);btn.disabled=true;setSync('','Saving...');
-  db.ref('bundles/'+cat).push({l:l,p:p,bf:calcBF(l,p),name:name,species:species,createdAt:Date.now()})
-    .then(function(){['len-'+cat,'rows-'+cat,'name-'+cat,'spec-'+cat].forEach(function(id){$(id).value='';});$('prev-'+cat).style.display='none';})
-    .catch(function(){alert('Failed to save.');setSync('err','⚠ Error');})
-    .finally(function(){btn.disabled=false;});
+  var obj={l:l,p:p,bf:calcBF(l,p),name:name,species:species,createdAt:Date.now()};
+  var key=null,synced=false;
+  if(FIREBASE_OK){
+    try{
+      var r=db.ref('bundles/'+cat).push();
+      key=r.key;
+      synced=true;
+      // The write finishes in the background and retries by itself on a weak connection.
+      r.set(obj).catch(function(){
+        pendingLocal[cat][key]=obj;
+        localState[cat].bundles[key]=obj;
+        renderBundles(cat);renderTotals(cat);
+        setSync('err','⚠ Not synced');
+        showToast('Not synced - kept on this phone only');
+      });
+    }catch(e){key=null;synced=false;}
+  }
+  if(!key){
+    key='local_'+Date.now();
+    pendingLocal[cat][key]=obj;
+    setSync('err','⚠ Not synced');
+  }
+  localState[cat].bundles[key]=obj;          // show it right away
+  renderBundles(cat);renderTotals(cat);
+  ['len-'+cat,'rows-'+cat,'name-'+cat,'spec-'+cat].forEach(function(id){$(id).value='';});
+  $('prev-'+cat).style.display='none';
+  $('len-'+cat).focus();                      // ready for the next bundle
 }
 function delBundle(cat,key){
   if(!confirm('Remove this bundle?'))return;
+  if(pendingLocal[cat][key]||!FIREBASE_OK){
+    delete pendingLocal[cat][key];delete localState[cat].bundles[key];
+    renderBundles(cat);renderTotals(cat);return;
+  }
+  delete localState[cat].bundles[key];
+  renderBundles(cat);renderTotals(cat);
   db.ref('bundles/'+cat+'/'+key).remove().catch(function(){alert('Failed to delete.');});
 }
 function editBundle(cat,key){localState[cat].editingId=key;renderBundles(cat);}
@@ -342,18 +422,30 @@ function saveBundle(cat,key){
   var l=parseFloat($('el-'+cat+'-'+key).value),p=parseInt($('ep-'+cat+'-'+key).value);
   var name=$('en-'+cat+'-'+key).value.trim(),species=$('es-'+cat+'-'+key).value.trim();
   if(!l||!p||l<=0||p<=0){alert('Fill in length and rows.');return;}
-  db.ref('bundles/'+cat+'/'+key).update({l:l,p:p,bf:calcBF(l,p),name:name,species:species})
-    .then(function(){localState[cat].editingId=null;})
-    .catch(function(){alert('Failed to update.');});
+  var upd={l:l,p:p,bf:calcBF(l,p),name:name,species:species};
+  var cur=localState[cat].bundles[key]||{};
+  Object.keys(upd).forEach(function(k){cur[k]=upd[k];});
+  localState[cat].bundles[key]=cur;
+  localState[cat].editingId=null;
+  renderBundles(cat);renderTotals(cat);
+  if(pendingLocal[cat][key]||!FIREBASE_OK)return;
+  db.ref('bundles/'+cat+'/'+key).update(upd).catch(function(){alert('Failed to update.');});
 }
 function renderBundles(cat){
   var el=$('blist-'+cat);if(!el)return;
   var bundles=localState[cat].bundles,editingId=localState[cat].editingId;
   var entries=Object.entries(bundles).sort(function(a,b){return(a[1].createdAt||0)-(b[1].createdAt||0);});
   if(!entries.length){el.innerHTML='';return;}
-  var h='<p class="sl">Bundles</p>';
-  entries.forEach(function(entry){
-    var key=entry[0],b=entry[1],lbl=b.name||'Bundle',st=b.species?'<span class="stag">'+b.species+'</span>':'';
+  var rtBF=0,rtRows=0;
+  entries.forEach(function(e){rtBF+=(e[1].bf||0);rtRows+=(e[1].p||0);});
+  var total=entries.length;
+  entries.reverse();   // newest first, so the bundle you just added is right under the form
+  var h='<p class="sl">Running List</p>'+
+    '<div class="run-total"><div><div class="rt-label">Running total</div><div class="rt-val">'+Math.round(rtBF).toLocaleString()+' BF</div></div>'+
+    '<div class="rt-sub">'+total+' bundle'+(total===1?'':'s')+'<br>'+rtRows.toLocaleString()+' rows</div></div>';
+  entries.forEach(function(entry,idx){
+    var key=entry[0],b=entry[1],lbl=b.name||('Bundle #'+(total-idx)),st=b.species?'<span class="stag">'+b.species+'</span>':'';
+    if(pendingLocal[cat][key])st+='<span class="stag" style="color:#B53030;">not synced</span>';
     if(editingId===key){
       h+='<div class="bi"><div class="bt"><div><div class="bn">'+lbl+st+'</div><div class="bdet">editing...</div></div></div>'+
         '<div class="eb"><div class="r2" style="margin-bottom:6px;">'+
@@ -375,6 +467,7 @@ function renderBundles(cat){
   el.innerHTML=h;
 }
 function renderTotals(cat){
+  if(currentTab==='report')renderReport();
   var el=$('btotals-'+cat);if(!el)return;
   var vals=Object.values(localState[cat].bundles);
   var tbf=vals.reduce(function(s,b){return s+b.bf;},0),tp=vals.reduce(function(s,b){return s+b.p;},0);
@@ -397,7 +490,9 @@ function renderTotals(cat){
 function clearBundles(cat){
   if(!Object.keys(localState[cat].bundles).length)return;
   if(!confirm('Clear all bundles for '+CAT_NAMES[cat]+'?'))return;
-  db.ref('bundles/'+cat).remove().catch(function(){alert('Failed.');});
+  pendingLocal[cat]={};localState[cat].bundles={};
+  renderBundles(cat);renderTotals(cat);
+  if(FIREBASE_OK)db.ref('bundles/'+cat).remove().catch(function(){alert('Failed.');});
 }
 function exportCSV(cat){
   var vals=Object.values(localState[cat].bundles);
@@ -446,6 +541,281 @@ function parseCSV(text){
   for(var i=1;i<lines.length;i++){var cols=lines[i].split(',');if(cols.length>colIdx){var val=cols[colIdx].replace(/"/g,'').trim();if(val)lots.push(val);}}
   return lots;
 }
+
+// ===== MANUAL / SCAN MODE (Raw, Rip, Moulded) =====
+function buildModeToggle(cat){
+  var panel=$('panel-'+cat),bf=$('bf-'+cat);
+  if(!panel||!bf)return;
+  try{var saved=localStorage.getItem('idi_mode_'+cat);if(saved==='scan'||saved==='manual')localState[cat].mode=saved;}catch(e){}
+  var m=document.createElement('div');
+  m.id='mode-'+cat;
+  m.className='mode-toggle';
+  m.innerHTML=
+    '<button class="mode-btn" id="mode-btn-'+cat+'-manual" onclick="setMode(\''+cat+'\',\'manual\')">Manual</button>'+
+    '<button class="mode-btn" id="mode-btn-'+cat+'-scan" onclick="setMode(\''+cat+'\',\'scan\')">Scan</button>';
+  panel.insertBefore(m,bf);
+  applyMode(cat);
+}
+function setMode(cat,mode){
+  localState[cat].mode=mode;
+  try{localStorage.setItem('idi_mode_'+cat,mode);}catch(e){}
+  applyMode(cat);
+}
+function applyMode(cat){
+  var mode=localState[cat].mode;
+  var manual=(mode!=='scan');
+  var bf=$('bf-'+cat),sb=$('scan-btn-'+cat);
+  if(bf)bf.style.display=manual?'':'none';          // calculator, bundle list and totals: Manual only
+  if(sb)sb.style.display=manual?'none':'block';     // scan button: Scan only
+  var bm=$('mode-btn-'+cat+'-manual'),bs=$('mode-btn-'+cat+'-scan');
+  if(bm)bm.className='mode-btn'+(manual?' active':'');
+  if(bs)bs.className='mode-btn'+(manual?'':' active');
+}
+// ===== END MODE =====
+
+// ===== REPORT / EXPORT =====
+var LOT_CATS=['raw','rip','moulded','glue'];
+function todayStr(){var d=new Date();function z(n){return (n<10?'0':'')+n;}return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate());}
+function csvCell(v){v=(v===undefined||v===null)?'':String(v);return '"'+v.replace(/"/g,'""')+'"';}
+function rowsToCSV(rows){return rows.map(function(r){return r.map(csvCell).join(',');}).join('\r\n');}
+function lotSortFn(a,b){var na=parseFloat(a.num),nb=parseFloat(b.num);return(!isNaN(na)&&!isNaN(nb))?na-nb:String(a.num).localeCompare(String(b.num));}
+function catStats(cat){
+  var lots=localState[cat].lots||[];
+  var acc=lots.filter(function(l){return l.checked;}).length;
+  return {total:lots.length,acc:acc,miss:lots.length-acc};
+}
+function bundleStats(cat){
+  var vals=Object.values(localState[cat].bundles||{});
+  return {n:vals.length,rows:vals.reduce(function(s,b){return s+(b.p||0);},0),bf:vals.reduce(function(s,b){return s+(b.bf||0);},0)};
+}
+function lotRowsFor(cat){
+  var lots=(localState[cat].lots||[]).slice().sort(function(a,b){
+    if(a.checked!==b.checked)return a.checked?1:-1;
+    return lotSortFn(a,b);
+  });
+  return lots.map(function(l){return ['Lot List',CAT_NAMES[cat],l.num,l.checked?'Accounted For':'NOT Accounted For','',''];});
+}
+function buildReportRows(){
+  var rows=[['Section','Category','Lot Number','Status','Description','Location']];
+  LOT_CATS.forEach(function(cat){lotRowsFor(cat).forEach(function(r){rows.push(r);});});
+  var tags=Object.values(missingTags||{}).sort(function(a,b){return(a.createdAt||0)-(b.createdAt||0);});
+  tags.forEach(function(t){rows.push(['Missing Tag',t.cat,t.lot,t.found?'Found':'Still Missing',t.desc||'',t.loc||'']);});
+  ['raw','rip','moulded'].forEach(function(cat){
+    var b=bundleStats(cat);
+    if(b.n)rows.push(['Bundle Total',CAT_NAMES[cat],'','',b.n+' bundles, '+b.rows+' rows, '+Math.round(b.bf)+' BF','']);
+  });
+  LOT_CATS.forEach(function(cat){
+    var c=localState[cat].counter||0;
+    if(c)rows.push(['Counter',CAT_NAMES[cat],'','','Counted: '+c,'']);
+  });
+  return rows;
+}
+function downloadCSV(rows,filename){
+  var blob=new Blob(['\ufeff'+rowsToCSV(rows)],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download=filename;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+}
+function exportReportCSV(){
+  var rows=buildReportRows();
+  if(rows.length<2){alert('Nothing to report yet. Load lot numbers or log bundles first.');return;}
+  downloadCSV(rows,'IDI_inventory_report_'+todayStr()+'.csv');
+}
+function shareReportCSV(){
+  var rows=buildReportRows();
+  if(rows.length<2){alert('Nothing to report yet.');return;}
+  var name='IDI_inventory_report_'+todayStr()+'.csv';
+  try{
+    var file=new File(['\ufeff'+rowsToCSV(rows)],name,{type:'text/csv'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      navigator.share({files:[file],title:name}).catch(function(){});
+      return;
+    }
+  }catch(e){}
+  downloadCSV(rows,name);
+}
+function exportLotsCSV(cat){
+  var rows=[['Category','Lot Number','Status']];
+  lotRowsFor(cat).forEach(function(r){rows.push([r[1],r[2],r[3]]);});
+  if(rows.length<2){alert('No lot numbers loaded for '+CAT_NAMES[cat]+'.');return;}
+  downloadCSV(rows,'IDI_'+cat+'_lots_'+todayStr()+'.csv');
+}
+function buildReportText(){
+  var L=['IDI INVENTORY CHECK REPORT','Generated: '+new Date().toLocaleString(),''];
+  LOT_CATS.forEach(function(cat){
+    var st=catStats(cat);
+    L.push(CAT_NAMES[cat].toUpperCase());
+    if(!st.total){L.push('  No lot list loaded');}
+    else{
+      L.push('  Lots: '+st.total+' | Accounted for: '+st.acc+' | NOT accounted for: '+st.miss);
+      var missing=(localState[cat].lots||[]).filter(function(l){return !l.checked;}).sort(lotSortFn).map(function(l){return l.num;});
+      if(missing.length)L.push('  Not accounted for: '+missing.join(', '));
+    }
+    if(cat!=='glue'){var b=bundleStats(cat);if(b.n)L.push('  Bundles: '+b.n+' | Rows: '+b.rows+' | Board feet: '+Math.round(b.bf).toLocaleString());}
+    var c=localState[cat].counter||0;if(c)L.push('  Counter: '+c);
+    L.push('');
+  });
+  var tags=Object.values(missingTags||{}).sort(function(a,b){return(a.createdAt||0)-(b.createdAt||0);});
+  L.push('MISSING TAGS');
+  if(!tags.length)L.push('  None logged');
+  tags.forEach(function(t){
+    L.push('  '+t.lot+' ['+t.cat+'] - '+(t.found?'FOUND':'STILL MISSING')+(t.desc?' - '+t.desc:'')+(t.loc?' - Location: '+t.loc:''));
+  });
+  return L.join('\n');
+}
+function copyReportText(){
+  var txt=buildReportText();
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){showToast('Report copied!');}).catch(function(){alert(txt);});}
+  else alert(txt);
+}
+function renderReport(){
+  var el=$('report-content');if(!el)return;
+  var h='<p class="sl" style="margin-top:1rem;">Inventory Report</p>';
+  var totAcc=0,totMiss=0;
+  LOT_CATS.forEach(function(cat){
+    var st=catStats(cat);totAcc+=st.acc;totMiss+=st.miss;
+    h+='<div class="rep-card"><div class="rep-title">'+CAT_NAMES[cat]+'</div>';
+    if(!st.total){h+='<div class="rep-note">No lot list loaded</div>';}
+    else{
+      h+='<div class="rep-row"><span>Lots on list</span><b>'+st.total+'</b></div>'+
+         '<div class="rep-row"><span>Accounted for</span><b class="good">'+st.acc+'</b></div>'+
+         '<div class="rep-row"><span>Not accounted for</span><b class="'+(st.miss?'bad':'good')+'">'+st.miss+'</b></div>';
+    }
+    if(cat!=='glue'){
+      var b=bundleStats(cat);
+      if(b.n)h+='<div class="rep-row"><span>Bundles / rows</span><b>'+b.n+' / '+b.rows+'</b></div>'+
+                '<div class="rep-row"><span>Board feet</span><b>'+Math.round(b.bf).toLocaleString()+' BF</b></div>';
+    }
+    var c=localState[cat].counter||0;
+    if(c)h+='<div class="rep-row"><span>Counter</span><b>'+c+'</b></div>';
+    h+='</div>';
+  });
+  var tags=Object.values(missingTags||{});
+  var tFound=tags.filter(function(t){return t.found;}).length;
+  h+='<div class="rep-card"><div class="rep-title">Missing Tags</div>'+
+     '<div class="rep-row"><span>Logged</span><b>'+tags.length+'</b></div>'+
+     '<div class="rep-row"><span>Found</span><b class="good">'+tFound+'</b></div>'+
+     '<div class="rep-row"><span>Still missing</span><b class="'+(tags.length-tFound?'bad':'good')+'">'+(tags.length-tFound)+'</b></div></div>';
+  h+='<p class="sl">Export</p>'+
+     '<button class="ba" style="margin-top:0;" onclick="exportReportCSV()">Download Full Report (CSV)</button>'+
+     (navigator.share?'<button class="btn-outline" style="margin-top:8px;" onclick="shareReportCSV()">Share / Save to Files</button>':'')+
+     '<button class="btn-outline" style="margin-top:8px;" onclick="copyReportText()">Copy as text</button>'+
+     '<div class="rep-note" style="margin-top:8px;">The CSV lists every lot as Accounted For or NOT Accounted For, plus Missing Tag entries (Found or Still Missing), bundle totals, and counters. Open it in Excel and filter the Status column.</div>'+
+     '<div style="height:5rem;"></div>';
+  el.innerHTML=h;
+}
+// ===== END REPORT =====
+
+// ===== BARCODE SCANNER =====
+var scanner=null,scanMode=null,scanCat=null,lastScan='',lastScanTime=0,scanCount=0,lastNotFound=null;
+function setScanMsg(msg,cls){var el=$('scanResult');el.textContent=msg;el.className='scan-result'+(cls?' '+cls:'');}
+function loadScannerLib(cb){
+  if(window.Html5Qrcode){cb(true);return;}
+  var s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+  s.onload=function(){cb(!!window.Html5Qrcode);};
+  s.onerror=function(){cb(false);};
+  document.head.appendChild(s);
+}
+function openScanner(mode,cat){
+  scanMode=mode;scanCat=cat;scanCount=0;lastScan='';lastNotFound=null;
+  $('scanExtra').style.display='none';
+  $('scanTitle').textContent=mode==='verify'?'Verify – '+CAT_NAMES[cat]:'Scan lot number';
+  $('scanOverlay').style.display='flex';
+  setScanMsg('Starting camera...','');
+  loadScannerLib(function(ok){
+    if(!ok){setScanMsg('Could not load the scanner. Check your connection, or type the lot number below.','err');return;}
+    startScanner();
+  });
+}
+function startScanner(){
+  if(scanner)return;
+  try{
+    scanner=new Html5Qrcode('scan-reader');
+    scanner.start(
+      {facingMode:'environment'},
+      {fps:10,qrbox:{width:260,height:130},experimentalFeatures:{useBarCodeDetectorIfSupported:true}},
+      onScanSuccess,
+      function(){}
+    ).then(function(){
+      setScanMsg(scanMode==='verify'?'Point the camera at a lot barcode':'Point the camera at a barcode','');
+    }).catch(function(){
+      scanner=null;
+      setScanMsg('Camera unavailable. Allow camera access for this site, or type the lot number below.','err');
+    });
+  }catch(e){scanner=null;setScanMsg('Camera unavailable. Type the lot number below.','err');}
+}
+function closeScanner(){
+  var finish=function(){scanner=null;$('scanOverlay').style.display='none';};
+  if(scanner){
+    scanner.stop().then(function(){try{scanner.clear();}catch(e){}finish();}).catch(finish);
+  }else{finish();}
+}
+function onScanSuccess(text){
+  var now=Date.now();
+  if(text===lastScan&&now-lastScanTime<2500)return;
+  lastScan=text;lastScanTime=now;
+  handleScanned(text);
+}
+function manualScan(){
+  var v=$('scanManual').value.trim();
+  if(!v)return;
+  $('scanManual').value='';
+  lastScan='';
+  handleScanned(v);
+}
+function sameLot(a,b){
+  a=String(a).trim().toLowerCase();b=String(b).trim().toLowerCase();
+  if(a===b)return true;
+  if(/^\d+$/.test(a)&&/^\d+$/.test(b))return a.replace(/^0+/,'')===b.replace(/^0+/,'');
+  return false;
+}
+function handleScanned(text){
+  text=String(text).trim();
+  if(!text)return;
+  if(navigator.vibrate)navigator.vibrate(60);
+  if(scanMode==='fill'){
+    $('mt-lot').value=text;
+    closeScanner();
+    showToast('Scanned: '+text);
+    return;
+  }
+  var lots=localState[scanCat].lots;
+  if(!lots.length){
+    setScanMsg('No lot list loaded for '+CAT_NAMES[scanCat]+'. Upload a CSV first.','warn');
+    return;
+  }
+  var idx=-1;
+  for(var i=0;i<lots.length;i++){if(sameLot(lots[i].num,text)){idx=i;break;}}
+  if(idx===-1){
+    lastNotFound={text:text,cat:scanCat};
+    setScanMsg('✗ '+text+' is not in the '+CAT_NAMES[scanCat]+' list','err');
+    $('scanExtra').style.display='block';
+    return;
+  }
+  $('scanExtra').style.display='none';
+  if(lots[idx].checked){
+    setScanMsg('Already verified: '+lots[idx].num,'warn');
+    return;
+  }
+  lots[idx].checked=true;
+  scanCount++;
+  db.ref('lots/'+scanCat).set({items:lots});
+  var left=lots.filter(function(l){return !l.checked;}).length;
+  setScanMsg('✓ Verified '+lots[idx].num+'  ('+scanCount+' this session, '+left+' left)','ok');
+}
+function scanAddMissing(){
+  if(!lastNotFound)return;
+  var nf=lastNotFound;
+  closeScanner();
+  switchTab('missing');
+  $('mt-lot').value=nf.text;
+  $('mt-cat').value=CAT_NAMES[nf.cat]||'';
+  window.scrollTo(0,0);
+  showToast('Lot '+nf.text+' ready to add');
+}
+// ===== END BARCODE SCANNER =====
+
 function toggleLot(cat,idx){
   var lots=localState[cat].lots;
   if(!lots[idx])return;
@@ -502,6 +872,7 @@ function renderLotItems(cat){
   el.innerHTML=h;
 }
 function renderLots(cat){
+  if(currentTab==='report')renderReport();
   var el=$('lot-content-'+cat);if(!el)return;
   var s=localState[cat];
   if(!s.lots.length){el.innerHTML='';return;}
@@ -510,6 +881,7 @@ function renderLots(cat){
     '<div class="lot-stats" id="lot-stats-'+cat+'"></div>'+
     '<input class="search-box" type="text" placeholder="Search lot numbers..." value="'+(s.lotSearch||'')+'" oninput="lotSearch(\''+cat+'\',this.value)" autocomplete="off" autocorrect="off" autocapitalize="off">'+
     '<div class="lot-list" id="lot-list-'+cat+'"></div>'+
+    '<button class="btn-outline" style="margin-top:10px;" onclick="exportLotsCSV(\''+cat+'\')">Export this list (CSV)</button>'+
     '<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">'+
       '<button class="btn-outline" onclick="uncheckAll(\''+cat+'\')">Uncheck all</button>'+
       '<button class="btn-danger" onclick="clearLots(\''+cat+'\')">Clear lots</button>'+
@@ -536,6 +908,7 @@ function deleteMissingTag(key){
   db.ref('missingTags/'+key).remove().catch(function(){alert('Failed.');});
 }
 function renderMissingTags(){
+  if(currentTab==='report')renderReport();
   var el=$('mt-list');if(!el)return;
   var entries=Object.entries(missingTags).sort(function(a,b){return(a[1].createdAt||0)-(b[1].createdAt||0);});
   if(!entries.length){el.innerHTML='<div class="empty">No missing tags logged yet.</div>';return;}
