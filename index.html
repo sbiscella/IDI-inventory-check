@@ -100,7 +100,9 @@ input[type="file"].file-input{display:none;}
 .rt-sub{font-size:12px;color:rgba(255,255,255,.7);text-align:right;}
 .zoom-wrap{display:none;align-items:center;gap:10px;margin:10px 16px 0;color:#fff;font-size:14px;}
 .zoom-wrap input[type=range]{flex:1;width:auto;padding:0;border:none;background:transparent;}
+.zoom-hint{display:none;margin:10px 16px 0;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);font-size:13px;line-height:1.35;}
 .scan-photo{margin:10px 16px 0;}
+.scan-photo button.primary{background:#fff;color:#0d2340;border-color:#fff;}
 .scan-photo button{width:100%;padding:12px;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;}
 .mode-toggle{display:flex;background:#e8edf4;border-radius:12px;padding:3px;gap:3px;margin-top:1rem;}
 .mode-btn{flex:1;padding:11px 0;border:none;border-radius:9px;font-size:14px;font-weight:600;background:transparent;color:#6a8bb0;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;touch-action:manipulation;}
@@ -172,14 +174,15 @@ if (typeof firebase === 'undefined' || !firebase.database) {
   <div class="scan-top"><span id="scanTitle">Scan barcode</span><button onclick="closeScanner()">Done</button></div>
   <div id="scan-reader"></div>
   <div id="zoomWrap" class="zoom-wrap"><span>🔍 Zoom</span><input type="range" id="zoomSlider" min="1" max="4" step="0.1" value="1" oninput="onZoom(this.value)"><span id="zoomVal">1.0x</span></div>
+  <div id="zoomHint" class="zoom-hint">Live zoom isn't available in this phone's browser (iPhone Safari doesn't allow it). For far-away tags, tap the photo button below and use your Camera's zoom.</div>
   <div class="scan-photo">
-    <button onclick="scanFromPhoto()">📸 Tag too far? Take a photo (uses your camera's zoom)</button>
+    <button id="scanPhotoBtn" onclick="scanFromPhoto()">📸 Tag too far? Take a photo (uses your camera's zoom)</button>
     <input type="file" id="scanPhoto" accept="image/*" capture="environment" style="display:none" onchange="onPhotoChosen(event)">
   </div>
   <div id="scanResult" class="scan-result">Point the camera at a barcode</div>
   <div id="scanExtra" class="scan-extra"><button onclick="scanAddMissing()">Add to Missing Tags</button></div>
   <div class="scan-manual">
-    <input type="text" id="scanManual" placeholder="Or type the lot number" autocomplete="off" autocorrect="off" autocapitalize="off">
+    <input type="text" id="scanManual" placeholder="Or type the lot number" inputmode="numeric" pattern="[0-9]*" enterkeyhint="go" autocomplete="off" autocorrect="off" autocapitalize="off" onkeydown="if(event.key==='Enter'){manualScan();}">
     <button onclick="manualScan()">Go</button>
   </div>
 </div>
@@ -750,7 +753,7 @@ function loadScannerLib(cb){
 function openScanner(mode,cat){
   scanMode=mode;scanCat=cat;scanCount=0;lastScan='';lastNotFound=null;zoomFeature=null;
   $('scanExtra').style.display='none';
-  $('zoomWrap').style.display='none';
+  resetZoomUI();
   $('scanTitle').textContent=mode==='verify'?'Verify – '+CAT_NAMES[cat]:'Scan lot number';
   $('scanOverlay').style.display='flex';
   setScanMsg('Starting camera...','');
@@ -784,9 +787,14 @@ function startScanner(keepMsg){
   attempt(hi,false);
 }
 // Camera zoom slider: only appears if this phone/browser allows zoom control
+function resetZoomUI(){
+  $('zoomWrap').style.display='none';
+  $('zoomHint').style.display='none';
+  $('scanPhotoBtn').className='';
+}
 function setupZoom(){
   var wrap=$('zoomWrap');
-  wrap.style.display='none';zoomFeature=null;
+  resetZoomUI();zoomFeature=null;
   try{
     var caps=scanner&&scanner.getRunningTrackCameraCapabilities&&scanner.getRunningTrackCameraCapabilities();
     var z=caps&&caps.zoomFeature&&caps.zoomFeature();
@@ -801,6 +809,10 @@ function setupZoom(){
       wrap.style.display='flex';
     }
   }catch(e){zoomFeature=null;}
+  if(!zoomFeature){
+    $('zoomHint').style.display='block';
+    $('scanPhotoBtn').className='primary';
+  }
 }
 function onZoom(v){
   v=parseFloat(v);
@@ -810,7 +822,7 @@ function onZoom(v){
   $('zoomVal').textContent=v.toFixed(1)+'x';
 }
 function closeScanner(){
-  var finish=function(){scanner=null;zoomFeature=null;$('zoomWrap').style.display='none';$('scanOverlay').style.display='none';};
+  var finish=function(){scanner=null;zoomFeature=null;resetZoomUI();$('scanOverlay').style.display='none';};
   if(scanner){
     var s=scanner;
     s.stop().then(function(){try{s.clear();}catch(e){}finish();}).catch(finish);
@@ -983,7 +995,7 @@ function renderLots(cat){
   // Build full structure once — search box is only created here, not on each keystroke
   el.innerHTML=
     '<div class="lot-stats" id="lot-stats-'+cat+'"></div>'+
-    '<input class="search-box" type="text" placeholder="Search lot numbers..." value="'+(s.lotSearch||'')+'" oninput="lotSearch(\''+cat+'\',this.value)" autocomplete="off" autocorrect="off" autocapitalize="off">'+
+    '<input class="search-box" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Search lot numbers..." value="'+(s.lotSearch||'')+'" oninput="lotSearch(\''+cat+'\',this.value)" autocomplete="off" autocorrect="off" autocapitalize="off">'+
     '<div class="lot-list" id="lot-list-'+cat+'"></div>'+
     '<button class="btn-outline" style="margin-top:10px;" onclick="exportLotsCSV(\''+cat+'\')">Export this list (CSV)</button>'+
     '<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">'+
